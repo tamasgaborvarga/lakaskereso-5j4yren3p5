@@ -262,6 +262,7 @@ footer{font-size:13px;color:var(--muted);display:grid;gap:4px}
     </div>
     <div class="row" style="gap:14px">
       <label class="small muted" for="web-be"><input id="web-be" type="checkbox"> Webscraping is az összehasonlításban</label>
+      <label class="small muted" for="kerulet">Kerület <select id="kerulet"><option value="">mind</option></select></label>
       <label class="small muted" for="rendez">Rendezés <select id="rendez">
         <option value="pont">pontszám</option><option value="ar">ár</option><option value="m2">m²-ár</option><option value="keszpenz">kell készpénz</option><option value="havi">havi teher</option><option value="netto">alapterület</option><option value="ti">a ti értékelésetek</option>
       </select></label>
@@ -391,6 +392,18 @@ footer{font-size:13px;color:var(--muted);display:grid;gap:4px}
   const savedR=store.get("lk-rendez");if(savedR)$("#rendez").value=savedR;
   $("#rendez").addEventListener("change",()=>{store.set("lk-rendez",$("#rendez").value);render()});
   $("#mutat-elvetett").addEventListener("change",render);
+  // kerületszűrő: a "kerulet" mező elején álló római szám ("XIII. ker., …"); minden nézetre érvényes
+  const ROMAI={I:1,V:5,X:10,L:50};
+  const romaiErtek=r=>[...r].reduce((a,c,i,s)=>ROMAI[c]<(ROMAI[s[i+1]]||0)?a-ROMAI[c]:a+ROMAI[c],0);
+  const kerOf=l=>(String(l.kerulet||"").match(/^\s*([IVXL]+)\./)||[])[1]||"";
+  let kerSzuro=store.get("lk-ker")||"";
+  $("#kerulet").addEventListener("change",e=>{kerSzuro=e.target.value;store.set("lk-ker",kerSzuro);render()});
+  function kerOpciok(){
+    const db={};lakasok.forEach(l=>{const k=kerOf(l);if(k)db[k]=(db[k]||0)+1});
+    if(kerSzuro&&!db[kerSzuro])kerSzuro="";
+    $("#kerulet").replaceChildren(el("option",{value:"",text:"mind ("+lakasok.length+")"}),...Object.keys(db).sort((a,b)=>romaiErtek(a)-romaiErtek(b)).map(k=>el("option",{value:k,text:k+". ker. ("+db[k]+")"})));
+    $("#kerulet").value=kerSzuro;
+  }
 
   const sz=l=>LK.szamol(l,keret(),ajanlat[l.id]);
   const pont=l=>LK.pontszam(l.pontok,sulyok);
@@ -406,7 +419,7 @@ footer{font-size:13px;color:var(--muted);display:grid;gap:4px}
   const atlag=id=>{const a=atlagSzam(id);if(a==null)return"–";const n=Object.values(velemeny[id].ertekeles).filter(Boolean).length;return a.toLocaleString("hu-HU",{maximumFractionDigits:1})+" / 5 ("+n+" fő)"};
 
   function sorrend(lista){
-    const all=lista.map(l=>({l,s:sz(l),p:pont(l)}));
+    const all=lista.filter(l=>!kerSzuro||kerOf(l)===kerSzuro).map(l=>({l,s:sz(l),p:pont(l)}));
     const pRank=[...all].sort((a,b)=>b.p-a.p);all.forEach(r=>r.rank=pRank.indexOf(r)+1);
     const lathato=$("#mutat-elvetett").checked?all:all.filter(r=>!elvetve(r.l));
     const key={pont:r=>-r.p,ar:r=>r.l.ar,m2:r=>r.s.m2,keszpenz:r=>r.s.keszpenz,havi:r=>r.s.havi?r.s.haviOssz:LK.szamol(r.l,keret(),r.s.max/1e6).haviOssz,netto:r=>-(r.l.netto||0),ti:r=>-(atlagSzam(r.l.id)??-1)}[$("#rendez").value]||(r=>-r.p);
@@ -415,7 +428,7 @@ footer{font-size:13px;color:var(--muted);display:grid;gap:4px}
 
   function render(){
     $("#keret-sav").replaceChildren(...[["Önerő",keret().onero+" M"],["Hitel max",keret().hitel+" M"],["Plafon","1,5 M/m²"],["Illeték + ügyvéd",(keret().illetek+keret().ugyved).toLocaleString("hu-HU")+"%"]].map(([k,v])=>el("span",{},k+" ",el("b",{text:v}))));
-    renderQueue();
+    renderQueue();kerOpciok();
     const webL=lakasok.filter(l=>l.web);
     $("#web-db").textContent=webL.length?"("+webL.length+")":"";
     $("#web-hint").textContent=webL.length?webL.length+" lakás, amit Claude a portálok átkeresésével talált (2026-10-21: Zenga, Jófogás, ingatlan.com részben). Ugyanúgy pontozva, mint a többi, de még senki nem nézte meg őket. "+(webBe?"Most a Kártyák és az Összehasonlítás nézetben is szerepelnek.":"Most csak ezen a fülön látszanak."):"Még nincs webscraping-találat.";
@@ -425,7 +438,7 @@ footer{font-size:13px;color:var(--muted);display:grid;gap:4px}
       const msg=db===null?"Ebben a nézetben az adatbázis nem érhető el. Nyisd meg bejelentkezve a claude.ai-on.":"Még nincs lakás a listán. Kattints az „Új hirdetés” gombra.";
       $("#nezet-kartya").replaceChildren(el("div",{class:"empty",text:msg}));$("#tabla").replaceChildren();$("#matrix").replaceChildren();return;
     }
-    if(nezet==="kartya")$("#nezet-kartya").replaceChildren(...rows.map(kartya));
+    if(nezet==="kartya")$("#nezet-kartya").replaceChildren(...(rows.length?rows.map(kartya):[el("div",{class:"empty",text:kerSzuro?"Ebben a kerületben nincs lakás ebben a nézetben. Válaszd a „mind” lehetőséget, vagy nézd meg a Webscraping fület.":"Nincs megjeleníthető lakás."})]));
     else{renderMatrix(rows);renderTabla(rows)}
     if(nyitott&&$("#det").open&&!(document.activeElement?.closest?.("#det")&&document.activeElement.tagName==="TEXTAREA"))renderDet();
   }
@@ -767,7 +780,7 @@ footer{font-size:13px;color:var(--muted);display:grid;gap:4px}
   $("#btn-dontes").addEventListener("click",async()=>{
     const panel=$("#dontes-panel"),out=$("#dontes-out");panel.hidden=false;
     if(!sample){out.textContent="A javaslat a claude.ai-on, bejelentkezve működik.";return}
-    const rows=sorrend().filter(r=>!elvetve(r.l));
+    const rows=sorrend(webBe?lakasok:lakasok.filter(l=>!l.web)).filter(r=>!elvetve(r.l));
     if(!rows.length){out.textContent="Még nincs mit összehasonlítani.";return}
     const adat=rows.map(({l,s,p})=>({cim:l.cim,kerulet:l.kerulet,ar_M:+(l.ar/1e6).toFixed(2),netto:l.netto,erkely:l.erkely,pontszam:p,pontok:l.pontok,otthonStartOk:s.osOk,lealkudni_M:+(Math.max(0,s.engedmeny)/1e6).toFixed(2),keszpenz_M:+(s.keszpenz/1e6).toFixed(2),plusz:l.plusz,minusz:l.minusz,piros:l.piros,ti_ertekelesetek:atlagSzam(l.id),statusz:statusz(l.id)}));
     dctl=new AbortController();$("#btn-dontes").disabled=true;$("#dontes-stop").hidden=false;out.textContent="Claude összeveti a lakásokat…";
