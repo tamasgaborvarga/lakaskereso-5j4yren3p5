@@ -410,6 +410,7 @@ footer{font-size:13px;color:var(--muted);display:grid;gap:4px}
   const statusz=id=>velemeny[id]?.statusz||"uj";
   const elvetve=l=>statusz(l.id)==="elvetve";
   const kepek=l=>Array.isArray(l.kepek)?l.kepek.filter(Boolean):[];
+  const telHref=t=>"tel:"+String(t).replace(/[^\d+]/g,"");
   const osPill=s=>el("span",{class:"pill "+(s.osOk?"ok":"bad"),text:(s.osOk?"Otthon Start ok · ":"plafon fölött · ")+(s.m2/1e6).toLocaleString("hu-HU",{minimumFractionDigits:2,maximumFractionDigits:2})+" M/m²"});
   const statPill=id=>{const st=statusz(id);return el("span",{class:"pill "+({elvetve:"bad",megnezve:"ok",megnezni:"warn"}[st]||"neutral"),text:STATUSZ.find(x=>x[0]===st)[1]})};
   const dupl=l=>lakasok.filter(o=>o.id!==l.id&&LK.duplikatum(l,o));
@@ -469,7 +470,7 @@ footer{font-size:13px;color:var(--muted);display:grid;gap:4px}
         el("div",{class:"facts"},[l.netto&&nf(l.netto)+" m²",l.erkely?"erkély "+nf(l.erkely)+" m²":null,l.szobak&&l.szobak+" szoba",l.emelet&&"emelet: "+l.emelet,l.tajolas].filter(Boolean).map(t=>el("span",{class:"pill neutral",text:t}))),
         el("div",{class:"facts"},flags),
         el("div",{class:"money"},el("div",{},el("span",{class:"label",text:"Készpénz kell"}),el("b",{text:s.osOk?M(s.keszpenz):"alku után "+M(LK.szamol(l,keret(),s.max/1e6).keszpenz)})),el("div",{},el("span",{class:"label",text:"Havi teher"}),el("b",{text:haviSzoveg(l,s)}))),
-        el("div",{class:"lfoot"},el("label",{for:"cmp-"+l.id},chk,"Összehasonlításba"),el("span",{class:"row",style:"gap:10px"},l.url?el("a",{class:"hlink",href:l.url,target:"_blank",rel:"noopener",text:"Hirdetés ↗"}):null,el("button",{class:"ghost",type:"button",text:"Részletek",onclick:()=>openDet(l.id)})))));
+        el("div",{class:"lfoot"},el("label",{for:"cmp-"+l.id},chk,"Összehasonlításba"),el("span",{class:"row",style:"gap:10px"},l.telefon?el("a",{class:"hlink",href:telHref(l.telefon),text:"☎ "+l.telefon}):null,l.url?el("a",{class:"hlink",href:l.url,target:"_blank",rel:"noopener",text:"Hirdetés ↗"}):null,el("button",{class:"ghost",type:"button",text:"Részletek",onclick:()=>openDet(l.id)})))));
   }
 
   const rovid=s=>String(s||"").replace(/\s*\([^)]*\)/g,"").trim();
@@ -555,7 +556,11 @@ footer{font-size:13px;color:var(--muted);display:grid;gap:4px}
   function renderDet(){
     const l=lakasok.find(x=>x.id===nyitott);if(!l){det.close();return}
     const s=sz(l),p=pont(l),k=kepek(l);if(kepIdx>=k.length)kepIdx=0;
-    const top=el("div",{class:"det-top"},el("div",{class:"row"},statPill(l.id),el("span",{class:"pill src",text:LK.forrasOldal(l.url)}),l.url?el("a",{href:l.url,target:"_blank",rel:"noopener",class:"small",text:"Hirdetés megnyitása"}):null),el("button",{class:"ghost",type:"button",text:"Bezárás",onclick:()=>det.close()}));
+    // telefonszám: a hirdetésből kézzel bemásolva (a portálok bot-ellenőrzés mögé teszik), a közös db-be menti
+    const telInp=el("input",{id:"tel-"+l.id,type:"tel",placeholder:"+36 …",value:l.telefon||"",style:"width:150px;padding:5px 8px",disabled:!(db&&canWrite)});
+    telInp.addEventListener("change",async()=>{const v=telInp.value.trim();try{await db.doc("lakasok/"+l.id).update({telefon:v})}catch(e){telInp.value=l.telefon||""}});
+    const top=el("div",{class:"det-top"},el("div",{class:"row"},statPill(l.id),el("span",{class:"pill src",text:LK.forrasOldal(l.url)}),l.url?el("a",{href:l.url,target:"_blank",rel:"noopener",class:"small",text:"Hirdetés megnyitása"}):null,
+      el("label",{class:"small row",for:"tel-"+l.id,style:"gap:6px"},"Telefon",telInp),l.telefon?el("a",{class:"small",href:telHref(l.telefon),text:"Hívás"}):null),el("button",{class:"ghost",type:"button",text:"Bezárás",onclick:()=>det.close()}));
     const main=el("div",{class:"main"},k.length?el("img",{src:imgSrc(k[kepIdx]),alt:l.cim+" – "+(kepIdx+1)+". kép"}):el("div",{class:"noimg"},el("span",{text:"Nincs kép ehhez a lakáshoz."}),assets?el("span",{class:"small",text:"Add hozzá lent, vagy illeszd be (Ctrl+V)."}):null));
     const thumbs=el("div",{class:"thumbs"},k.map((id,i)=>el("button",{type:"button","aria-label":(i+1)+". kép","aria-current":String(i===kepIdx),onclick:()=>{kepIdx=i;renderDet()}},el("img",{src:imgSrc(id),alt:"",loading:"lazy"}))));
     if(assets&&canWrite){
